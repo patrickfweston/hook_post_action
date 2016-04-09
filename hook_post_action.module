@@ -1,34 +1,42 @@
 <?php
+
 /**
- * @param $entity
- * @param $type
+ * @file
+ * Contains post hooks declaration.
  */
-function hook_post_action_entity_insert($entity, $type) {
-  drupal_register_shutdown_function('_hook_post_action_post_save', $entity, $type, 'insert');
+
+use Drupal\Core\Entity\EntityInterface;
+
+/**
+ * Implements hook_entity_insert().
+ */
+function hook_post_action_entity_insert(EntityInterface $entity) {
+  drupal_register_shutdown_function('_hook_post_action_post_save', $entity, 'insert');
 }
 
 /**
- * @param $entity
- * @param $type
+ * Implements hook_entity_update().
  */
-function hook_post_action_entity_update($entity, $type) {
-  drupal_register_shutdown_function('_hook_post_action_post_save', $entity, $type, 'update');
+function hook_post_action_entity_update(EntityInterface $entity) {
+  drupal_register_shutdown_function('_hook_post_action_post_save', $entity, 'update');
 }
 
 /**
- * @param $entity
- * @param $type
+ * Implements hook_entity_delete
  */
-function hook_post_action_entity_delete($entity, $type) {
-  drupal_register_shutdown_function('_hook_post_action_post_save', $entity, $type, 'delete');
+function hook_post_action_entity_delete(EntityInterface $entity) {
+  drupal_register_shutdown_function('_hook_post_action_post_save', $entity, 'delete');
 }
 
 /**
- * @param $entity
- * @param $type
- * @param $op
+ * Post save shutdown callback.
+ *
+ * @param EntityInterface $entity
+ *   Updated entity.
+ * @param string $op
+ *   Operation name.
  */
-function _hook_post_action_post_save($entity, $type, $op) {
+function _hook_post_action_post_save(EntityInterface $entity, $op) {
   $entity_is_saved = FALSE;
   $new_entity = NULL;
 
@@ -36,19 +44,23 @@ function _hook_post_action_post_save($entity, $type, $op) {
     $entity_is_saved = TRUE;
   }
   if ($op == 'delete') {
-    list($id) = entity_extract_ids($type, $entity);
-    $new_entity = entity_load($type, array($id));
+    $new_entity = \Drupal::entityTypeManager()
+      ->getStorage($entity->getEntityTypeId())
+      ->load($entity->id());
     if (!$new_entity) {
       $entity_is_saved = TRUE;
     }
   }
   if ($entity_is_saved) {
-    module_invoke_all('entity_post' . $op, $entity, $type);
-    module_invoke_all('entity_postsave', $entity, $type, $op);
+    $type = $entity->getEntityTypeId();
+    $module_handler = Drupal::moduleHandler();
 
-    if ($type == 'node') {
-      module_invoke_all('node_post' . $op, $entity);
-      module_invoke_all('node_postsave', $entity, $op);
-    }
+    // Invokes hook_ENTITY_TYPE_post<operation name>.
+    $module_handler->invokeAll($type . '_post' . $op, [$entity]);
+    $module_handler->invokeAll($type . '_postsave', [$entity, $op]);
+
+    // Invokes hook_entity_post<operation name>.
+    $module_handler->invokeAll('entity_post' . $op, [$entity]);
+    $module_handler->invokeAll('entity_postsave', [$entity, $op]);
   }
 }
